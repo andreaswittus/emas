@@ -1,2 +1,6 @@
 ipykernel
 python-dotenv
+
+os
+sqlite3
+pandas
