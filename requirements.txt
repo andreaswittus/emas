@@ -1,8 +1,5 @@
 ipykernel
 python-dotenv
-sqlite3
-pandas
 requests
-re
-json
+pandas
 bs4
