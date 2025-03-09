@@ -1,6 +1,8 @@
 ipykernel
 python-dotenv
-
-os
 sqlite3
 pandas
+requests
+re
+json
+bs4
