@@ -1,3 +1,15 @@
+# Commiting structure
+- Fetch Main
+- Create new Branch from Main
+- Commit from Branch
+- Check for conflicts
+- Push to Main
+
+
+
+
+
+
 # Data Project Template
 
 <a target="_blank" href="https://datalumina.com/">
