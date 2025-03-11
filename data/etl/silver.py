@@ -1,4 +1,3 @@
-import os
 import re
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -31,20 +30,19 @@ from utils import (
 # Load environment variables from .env file
 load_dotenv()
 
-# Optional: Set Pandas option to display full text in cells for debugging.
+# Optional: Set Pandas option to display full content in cells (for debugging)
 pd.set_option("display.max_colwidth", None)
 
 
 def remove_signature_block(text):
     """
     Removes a signature block from the text by searching for common signature phrases.
-    Uses a regular expression (case-insensitive) to detect phrases like "best regards",
-    "med venlig hilsen", etc. and truncates the text from the first occurrence onward.
+    Uses a regex pattern (case-insensitive) to detect phrases like "best regards", "med venlig hilsen", etc.
+    If a match is found, truncates the text from that point onward.
     """
     if not text:
         return text
 
-    # Regex pattern for common signature phrases in various languages.
     pattern = re.compile(
         r"(?i)\b(?:best regards|kind regards|sincerely|yours truly|yours faithfully|"
         r"med venlig hilsen|vennlig hilsen|met venlig hilsen|met vriendelijke groet|vriendelijke groet|groeten,)\b"
@@ -68,24 +66,18 @@ def clean_email_body(raw_html):
       6. Normalize the text:
            - Convert to lowercase.
            - Remove non-ASCII characters.
-
-    Parameters:
-      raw_html (str): Raw HTML content from the email's uniqueBody.
-
-    Returns:
-      str: Cleaned and normalized text.
     """
     if not raw_html:
         return ""
 
-    # Parse the HTML.
+    # Parse HTML with BeautifulSoup
     soup = BeautifulSoup(raw_html, "html.parser")
 
     # Remove unwanted tags.
     for tag in soup(["script", "style", "img", "table"]):
         tag.decompose()
 
-    # Extract visible text using newline as separator.
+    # Extract visible text with newline as a separator.
     text = soup.get_text(separator="\n")
 
     # Collapse extra whitespace.
@@ -116,16 +108,24 @@ def add_cleaned_body_to_dataframe(df):
 def filter_and_limit_emails(df):
     """
     Filters the DataFrame to remove rows with null/empty cleaned_body values,
-    drops duplicates based on graph_id, and limits the DataFrame to 100 rows.
+    drops duplicates based on 'graph_id', and limits the DataFrame to 100 rows.
     """
-    # Remove rows where cleaned_body is null or empty
     df_filtered = df[
         df["cleaned_body"].notnull() & (df["cleaned_body"].str.strip() != "")
     ]
-    # Drop duplicates based on graph_id
     df_filtered = df_filtered.drop_duplicates(subset=["graph_id"])
-    # Limit to first 100 rows
     return df_filtered.head(100)
+
+
+def replace_emails_table(table_name: str, df: pd.DataFrame):
+    """
+    Overwrites the specified table in the SQLite database with the provided DataFrame.
+    This function replaces the entire table with the new data.
+    """
+    db_path = _database_path()
+    with sqlite3.connect(db_path) as con:
+        df.to_sql(table_name, con, if_exists="replace", index=False)
+    print(f"Replaced table '{table_name}' with {len(df)} rows.")
 
 
 def main():
@@ -138,7 +138,7 @@ def main():
     print("Existing email data (raw_body):")
     print(df_emails[["graph_id", "subject", "raw_body"]].head())
 
-    # Add a new column 'cleaned_body' by cleaning raw_body.
+    # Process raw_body to generate cleaned_body.
     df_emails = add_cleaned_body_to_dataframe(df_emails)
 
     print("\nData after preprocessing (with cleaned_body):")
@@ -150,7 +150,7 @@ def main():
     print(df_curated[["graph_id", "subject", "cleaned_body"]].head())
 
     # Overwrite (replace) the 'emails' table with the curated data.
-    upsert_df_to_sql_table("emails", df_curated)
+    replace_emails_table("emails", df_curated)
 
     # Read back and display final contents for verification.
     df_final = read_sql_table("emails")
