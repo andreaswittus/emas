@@ -1,5 +1,6 @@
 import re
 import pandas as pd
+import sqlite3
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from utils import (
@@ -10,7 +11,7 @@ from utils import (
 # This function is used to remove the emails table from the database.
 # It is useful when you want to start fresh and remove all existing data.
 # import sqlite3
-# from utils import _database_path
+from utils import _database_path
 
 
 # def clear_emails_table_drop():
@@ -160,3 +161,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# Next steps is to implement the excel file to map the department labels to the emails. ########################################################
+# this is done in the gold.py file -- Maybe we should consider inserting it in the silver_salessupport.py file.

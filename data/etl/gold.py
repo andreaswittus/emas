@@ -1,8 +1,14 @@
+import sqlite3
 import pandas as pd
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from utils import read_sql_table, upsert_df_to_sql_table
+from utils import (
+    read_sql_table,
+    upsert_df_to_sql_table,
+    _database_path,
+)  # Ensure _database_path is available
 
-# Load environment variables (if using a .env file)
+# Load environment variables from a .env file
 load_dotenv()
 
 # Optional: Set Pandas option to display full text in cells for debugging.
@@ -36,28 +42,34 @@ def assign_sender_department(sender, mapping):
     return mapping.get(sender, None)
 
 
-def assign_to_departments(to_list_str, mapping):
+def assign_departments_from_list(email_list_str, mapping):
     """
-    For a comma-separated string of recipient emails, returns a comma-separated
-    string of unique departments.
+    For a comma-separated string of email addresses, returns a comma-separated
+    string of unique departments in the order they appear.
+    If an email is not found in the mapping, it is replaced with "NULL".
+
+    For example:
+      Input: "unknown@dacapo.com, jmn@dacapo.com, jmn@dacapo.com"
+      Mapping: unknown -> "NULL", jmn -> "sales"
+      Output: "NULL, sales"
     """
-    if not to_list_str:
+    if not email_list_str:
         return None
     # Split and normalize email addresses.
-    emails = [e.strip().lower() for e in to_list_str.split(",") if e.strip()]
-    departments = set()
+    emails = [e.strip().lower() for e in email_list_str.split(",") if e.strip()]
+    unique_depts = []
+    seen = set()
     for email in emails:
-        dept = mapping.get(email)
-        if dept:
-            departments.add(dept)
-    if departments:
-        return ", ".join(sorted(departments))
-    return None
+        dept = mapping.get(email, "NULL")
+        if dept not in seen:
+            seen.add(dept)
+            unique_depts.append(dept)
+    return ", ".join(unique_depts)
 
 
 def add_department_labels(df, mapping):
     """
-    Adds 'sender_department' and 'to_departments' columns to the DataFrame.
+    Adds 'sender_department', 'to_departments', and 'cc_departments' columns to the DataFrame.
     """
     if "sender" in df.columns:
         df["sender_department"] = df["sender"].apply(
@@ -65,12 +77,36 @@ def add_department_labels(df, mapping):
         )
     if "to_list" in df.columns:
         df["to_departments"] = df["to_list"].apply(
-            lambda x: assign_to_departments(x, mapping)
+            lambda x: assign_departments_from_list(x, mapping)
+        )
+    if "cc_list" in df.columns:
+        df["cc_departments"] = df["cc_list"].apply(
+            lambda x: assign_departments_from_list(x, mapping)
         )
     return df
 
 
-# --- Main Function for the Gold Layer Enrichment ---
+# --- Step 3: Replace the Emails Table with Curated Data ---
+def replace_emails_table(df: pd.DataFrame):
+    """
+    Overwrites the 'emails' table in the SQLite database with the given DataFrame.
+    Ensures that only the rows in the DataFrame are stored (e.g. exactly 100 rows).
+    """
+    db_path = _database_path()
+    with sqlite3.connect(db_path) as con:
+        df.to_sql("emails", con, if_exists="replace", index=False)
+    print(f"Replaced the 'emails' table with {len(df)} rows.")
+
+
+def filter_and_limit_emails(df):
+    """
+    Filters the DataFrame to remove rows with duplicate graph_id values and limits to 100 rows.
+    """
+    df_filtered = df.drop_duplicates(subset=["graph_id"])
+    return df_filtered.head(100)
+
+
+# --- Main Function for Gold Layer Enrichment ---
 def main():
     # Step 1: Load existing email data from the SQLite database.
     df_emails = read_sql_table("emails")
@@ -79,11 +115,12 @@ def main():
         return
 
     print("Existing email data preview:")
-    print(df_emails[["graph_id", "subject", "sender", "to_list"]].head())
+    print(df_emails[["graph_id", "subject", "sender", "to_list", "cc_list"]].head())
 
     # Step 2: Load the email-to-department mapping from the Excel file.
-    mapping_filepath = (
-        "Extracted_Employee_Emails_and_Roles.xlsx"  # Adjust the path as needed
+    mapping_filepath = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Extracted_Employee_Emails_and_Roles.xlsx",
     )
     email_to_dept = load_email_department_mapping(mapping_filepath)
     print("\nEmail-to-department mapping:")
@@ -95,12 +132,34 @@ def main():
     # Preview the enriched data.
     print("\nData after adding department labels:")
     print(
-        df_emails[["graph_id", "subject", "sender_department", "to_departments"]].head()
+        df_emails[
+            [
+                "graph_id",
+                "subject",
+                "sender_department",
+                "to_departments",
+                "cc_departments",
+            ]
+        ].head()
     )
 
-    # (Optional) Further aggregation steps can be applied here before writing to gold layer.
-    # For now, we update the silver layer table with these new columns.
-    upsert_df_to_sql_table("emails", df_emails)
+    # Filter and limit to 100 emails.
+    df_curated = filter_and_limit_emails(df_emails)
+    print(f"\nCurated data (limited to {len(df_curated)} rows):")
+    print(
+        df_curated[
+            [
+                "graph_id",
+                "subject",
+                "sender_department",
+                "to_departments",
+                "cc_departments",
+            ]
+        ].head()
+    )
+
+    # Replace the 'emails' table with these curated rows.
+    replace_emails_table(df_curated)
 
     # Display the final table for verification.
     df_final = read_sql_table("emails")
@@ -110,6 +169,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-mapping_df = pd.read_excel("Extracted_Employee_Emails_and_Roles.xlsx")
-print("Columns:", mapping_df.columns.tolist())
