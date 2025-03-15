@@ -53,10 +53,12 @@ def html_to_clean_text(html):
     """Convert HTML content to clean text."""
     return BeautifulSoup(html, "html.parser").get_text() if html else ""
 
-def fetch_emails_for_training(access_token, user_email, folder_name=None, top=20):
+def fetch_emails_for_training(access_token, user_email, folder_name=None, top=10):
     """
-    Fetch emails from user_email mailbox. If folder_name is e.g. 'Archive',
-    we attempt to find that folder and retrieve from there.
+    Fetch all emails from the specified folder in the user's mailbox.
+
+    - If folder_name is provided, it retrieves emails only from that folder.
+    - If folder_name is not provided, it retrieves from the default Inbox.
 
     Returns a list of dictionaries with cleaned fields for training.
     """
@@ -68,11 +70,11 @@ def fetch_emails_for_training(access_token, user_email, folder_name=None, top=20
         return []
 
     base_url = f"https://graph.microsoft.com/v1.0/users/{user_email}"
-
-    # 1) If folder_name is provided, find that folder's ID
+    
+    # 1) Find Folder ID if a folder name is provided
     folder_id = None
     if folder_name:
-        folder_url = base_url + "/mailFolders"
+        folder_url = f"{base_url}/mailFolders"
         headers = {
             'Authorization': f'Bearer {access_token}',
             'Content-Type': 'application/json'
@@ -87,60 +89,69 @@ def fetch_emails_for_training(access_token, user_email, folder_name=None, top=20
                     break
         except requests.exceptions.RequestException as e:
             print("Error looking for folder:", e)
+            return None
 
-    # If folder_id is found, we set the mail fetch endpoint
-    mail_endpoint = f"{base_url}/mailFolders/{folder_id}/messages" if folder_id else f"{base_url}/messages"
+    # 2) Define the API endpoint
+    if folder_id:
+        mail_endpoint = f"{base_url}/mailFolders/{folder_id}/messages"
+    else:
+        mail_endpoint = f"{base_url}/mailFolders/Inbox/messages"  # Default to Inbox if no folder specified
 
-    # 2) Build request
-    params = {
-        '$select': 'id,subject,from,toRecipients,ccRecipients,bccRecipients,body,receivedDateTime,sentDateTime,conversationId,uniqueBody',
-        '$top': str(top)
-    }
     headers = {
         'Authorization': f'Bearer {access_token}',
         'Content-Type': 'application/json'
     }
+    
+    params = {
+        '$select': 'id,subject,from,toRecipients,ccRecipients,bccRecipients,body,receivedDateTime,sentDateTime,conversationId,uniqueBody',
+        '$top': '100'  # Fetch in batches of 100 for efficiency
+    }
 
     all_emails = []
+    next_link = mail_endpoint  # Start with the main request URL
 
-    try:
-        response = requests.get(mail_endpoint, headers=headers, params=params)
-        response.raise_for_status()  # Raises an error for bad responses (4xx, 5xx)
-    except requests.exceptions.RequestException as e:
-        print(f"Error calling Microsoft Graph: {e}")
-        return None  # Return None on failure
+    while next_link:
+        try:
+            response = requests.get(next_link, headers=headers, params=params if next_link == mail_endpoint else None)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            print(f"Error calling Microsoft Graph: {e}")
+            return None  # Return None on failure
 
-    print("HTTP Status Code:", response.status_code)
+        print("HTTP Status Code:", response.status_code)
 
-    if response.status_code == 200:
-        data = response.json()
-        emails = data.get("value", [])
+        if response.status_code == 200:
+            data = response.json()
+            emails = data.get("value", [])
 
-        if not emails:
-            print("No emails found in this mailbox/folder for that user.")
+            if not emails:
+                print(f"No emails found in the {folder_name if folder_name else 'Inbox'} folder.")
+                break
+
+            for email in emails:
+                email_data = {
+                    "id": email.get("id"),
+                    "subject": email.get("subject"),
+                    "sender": email.get("from", {}).get("emailAddress", {}).get("address"),
+                    "receivedDateTime": email.get("receivedDateTime"),
+                    "sentDateTime": email.get("sentDateTime"),
+                    "conversationId": email.get("conversationId"),
+                    "toRecipients": [rec.get("emailAddress", {}).get("address") for rec in email.get("toRecipients", [])],
+                    "ccRecipients": [rec.get("emailAddress", {}).get("address") for rec in email.get("ccRecipients", [])],
+                    "bccRecipients": [rec.get("emailAddress", {}).get("address") for rec in email.get("bccRecipients", [])],
+                    "uniqueBody": html_to_clean_text(email.get("uniqueBody", {}).get("content", "")),
+                    "Body": html_to_clean_text(email.get("body", {}).get("content", ""))
+                }
+                all_emails.append(email_data)
+
+            # **Fix Pagination Handling**
+            next_link = data.get("@odata.nextLink")  # Follow the next page if exists
+
+        else:
+            print(f"Error: {response.status_code}, {response.text}")
             return None
 
-        for email in emails:
-            email_data = {
-                "id": email.get("id"),
-                "subject": email.get("subject"),
-                "sender": email.get("from", {}).get("emailAddress", {}).get("address"),
-                "receivedDateTime": email.get("receivedDateTime"),
-                "sentDateTime": email.get("sentDateTime"),
-                "conversationId": email.get("conversationId"),
-                "toRecipients": [rec.get("emailAddress", {}).get("address") for rec in email.get("toRecipients", [])],
-                "ccRecipients": [rec.get("emailAddress", {}).get("address") for rec in email.get("ccRecipients", [])],
-                "bccRecipients": [rec.get("emailAddress", {}).get("address") for rec in email.get("bccRecipients", [])],
-                "uniqueBody": html_to_clean_text(email.get("uniqueBody", {}).get("content", "")),
-                "Body": html_to_clean_text(email.get("body", {}).get("content", ""))
-            }
-            all_emails.append(email_data)
-
-    else:
-        print(f"Error: {response.status_code}, {response.text}")
-        return None
-
-    return all_emails  # Return a list of email dictionaries
+    return all_emails  # Return all emails from the specified folder
 
 def run_email_data_pipeline():
     # 1) Get token
@@ -154,7 +165,7 @@ def run_email_data_pipeline():
     folder_name = "Archive"  # or None if top-level
 
     # 3) Fetch emails
-    emails_data = fetch_emails_for_training(token, user_email, folder_name=folder_name, top=10)
+    emails_data = fetch_emails_for_training(token, user_email, folder_name=folder_name)
     print(f"Fetched {len(emails_data)} emails from {folder_name or 'top-level'}.")
 
     # 4) Convert emails to a Pandas DataFrame
@@ -167,5 +178,16 @@ def run_email_data_pipeline():
     return email_df
 
 email_df = run_email_data_pipeline()
+
+def clean_dataframe_for_sql(df):
+    """
+    Converts list-type columns to string before inserting into SQL.
+    """
+    for col in df.columns:
+        if df[col].apply(lambda x: isinstance(x, list)).any():  # Check if column contains lists
+            df[col] = df[col].apply(lambda x: ",".join(x) if isinstance(x, list) else x)  # Convert lists to comma-separated strings
+    return df
+
+email_df = clean_dataframe_for_sql(email_df)
 
 upsert_df_to_sql_table("training_emails", email_df)
