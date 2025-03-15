@@ -102,7 +102,7 @@ def fetch_all_emails_uniquebody(access_token, user_email, folder_name=None):
             "id,conversationId,subject,from,toRecipients,ccRecipients,bccRecipients,"
             "receivedDateTime,sentDateTime,uniqueBody"
         ),
-        "$top": "50",  # You can adjust this page size as needed.
+        "$top": "100",  # You can adjust this page size as needed.
     }
     headers = {"Authorization": f"Bearer {access_token}"}
 
