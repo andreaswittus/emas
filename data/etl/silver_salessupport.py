@@ -1,6 +1,7 @@
 import re
 import pandas as pd
 import sqlite3
+import unicodedata
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from utils import (
@@ -89,7 +90,7 @@ def clean_email_body(raw_html):
 
     # Normalize: convert to lowercase and remove non-ASCII characters.
     text = text.lower()
-    text = text.encode("ascii", errors="ignore").decode("ascii")
+    text = unicodedata.normalize("NFKC", text)
 
     return text
 
@@ -99,23 +100,30 @@ def add_cleaned_body_to_dataframe(df):
     Takes a DataFrame with a 'raw_body' column and adds a new column 'cleaned_body'
     by applying the clean_email_body function to each raw HTML email body.
     """
+    # Ensure df is a DataFrame
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Input must be a pandas DataFrame.")
+
+    # Check if the required column exists
     if "raw_body" not in df.columns:
-        print("The DataFrame does not contain a 'raw_body' column.")
-        return df
-    df["cleaned_body"] = df["raw_body"].apply(clean_email_body)
+        raise ValueError("The DataFrame does not contain a 'raw_body' column.")
+
+    # Apply cleaning function, handling missing values
+    df["cleaned_body"] = df["raw_body"].fillna("").astype(str).apply(clean_email_body)
+
     return df
 
 
-def filter_and_limit_emails(df):
-    """
-    Filters the DataFrame to remove rows with null/empty cleaned_body values,
-    drops duplicates based on 'graph_id', and limits the DataFrame to 100 rows.
-    """
-    df_filtered = df[
-        df["cleaned_body"].notnull() & (df["cleaned_body"].str.strip() != "")
-    ]
-    df_filtered = df_filtered.drop_duplicates(subset=["graph_id"])
-    return df_filtered.head(100)
+# def filter_and_limit_emails(df):
+#     """
+#     Filters the DataFrame to remove rows with null/empty cleaned_body values,
+#     drops duplicates based on 'graph_id', and limits the DataFrame to 100 rows.
+#     """
+#     df_filtered = df[
+#         df["cleaned_body"].notnull() & (df["cleaned_body"].str.strip() != "")
+#     ]
+#     df_filtered = df_filtered.drop_duplicates(subset=["graph_id"])
+#     return df_filtered.head(100)
 
 
 def replace_emails_table(table_name: str, df: pd.DataFrame):
@@ -135,23 +143,23 @@ def main():
     if df_emails.empty:
         print("No emails found in the database.")
         return
-
-    print("Existing email data (raw_body):")
-    print(df_emails[["graph_id", "subject", "raw_body"]].head())
-
+    
+    total_emails = len(df_emails)
+    print(f"[INFO] Processing {total_emails} emails...")
+    
     # Process raw_body to generate cleaned_body.
     df_emails = add_cleaned_body_to_dataframe(df_emails)
 
-    print("\nData after preprocessing (with cleaned_body):")
-    print(df_emails[["graph_id", "subject", "cleaned_body"]].head())
+    print(f"Email preprocessing complete")
+    # print(df_emails[["graph_id", "subject", "cleaned_body"]].head())
 
-    # Filter and limit to 100 emails.
-    df_curated = filter_and_limit_emails(df_emails)
-    print(f"\nCurated data (limited to {len(df_curated)} rows):")
-    print(df_curated[["graph_id", "subject", "cleaned_body"]].head())
+    # # Filter and limit to 100 emails.
+    # df_curated = filter_and_limit_emails(df_emails)
+    # print(f"\nCurated data (limited to {len(df_curated)} rows):")
+    # print(df_curated[["graph_id", "subject", "cleaned_body"]].head())
 
     # Overwrite (replace) the 'emails' table with the curated data.
-    replace_emails_table("emails", df_curated)
+    replace_emails_table("emails", df_emails)
 
     # Read back and display final contents for verification.
     df_final = read_sql_table("emails")
