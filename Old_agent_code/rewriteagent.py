@@ -2,7 +2,7 @@
 
 from langchain_openai import ChatOpenAI
 
-from models.schemas import State, ReWriteEmail
+from Old_agent_code.schemas import State, ReWriteEmail
 from emas.main.config import get_config
 # wait with config file #
 

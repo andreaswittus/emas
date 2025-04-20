@@ -4,7 +4,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.store.base import BaseStore
 
-from models.schemas import (
+from Old_agent_code.schemas import (
     State,
     NewEmailDraft,
     ResponseEmailDraft,
