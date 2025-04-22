@@ -3,3 +3,5 @@ python-dotenv
 requests
 pandas
 bs4
+# lightweight UI
+streamlit>=1.33
