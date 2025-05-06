@@ -44,11 +44,11 @@ class EmailRewriteAgent(abc.ABC):
         return self.llm.generate(prompt, temperature=0.3)
 
 
-# ------------------ Sales Support Agent ------------------
+# ------------------ RMA Agent ------------------
 SALES_SUPPORT_GUIDELINES = textwrap.dedent("""
 Subject:
   • Must include a reference number (SO / RMA / Item / Batch).
-  • Format example: "SO 31202516 – Fittings – Expected picking error".
+  • Format example: "SO 31202516 - Fittings - Expected picking error".
 
 BODY:
   • State whether the issue concerns *Fittings* or *Steel*.
@@ -61,56 +61,54 @@ BODY:
 """)
 
 
-class SalesSupportAgent(EmailRewriteAgent):
-    NAME = "sales_support"
+class RMASupportAgent(EmailRewriteAgent):
+    NAME = "rma"
     GUIDELINES = SALES_SUPPORT_GUIDELINES
 
 
-# ------------------ Transport Agent ------------------
-TRANSPORT_GUIDELINES = textwrap.dedent("""
+# ------------------ Order Cancel Agent ------------------
+ORDERCANCEL_GUIDELINES = textwrap.dedent("""
 Subject:
-  • Format: "<SO number> – Route <##> – <Reason>"
-    e.g. "31548564 – Route 50 – Missing colli".
+  • Format: "<SO number> - <Order/Line Cancel> - <Reason>"
+    e.g. "31548564 - Cancel Order - Wrong items".
+
+BODY:
+  • State the Sales Order number, if the order or lines should be cancelled.
+  • Clearly describe the issue (delay, missing colli, damage, etc.).
+  • If missing item or material: list Item #, dimensions, charge, quantity, colli #.
+  • Keep language professional and concise.
+""")
+
+
+class CancelAgent(EmailRewriteAgent):
+    NAME = "cancel"
+    GUIDELINES = ORDERCANCEL_GUIDELINES
+
+
+# ------------------ Change Route Agent ------------------
+CHANGEROUTE_GUIDELINES = textwrap.dedent("""
+Subject:
+  • Format: "<SO number> - Route <##> - <Reason>"
+    e.g. "31548564 - Route 50 - Missing colli".
 
 BODY:
   • State the Sales Order number and route number.
   • Clearly describe the issue (delay, missing colli, damage, etc.).
   • If missing material: list Item #, dimensions, charge, quantity, colli #.
-  • Ask: what did the customer sign for on the CMR/packing slip? How many colli?
-  • Ask for screenshots or images when helpful.
   • Keep language professional and concise.
 """)
 
 
-class TransportAgent(EmailRewriteAgent):
-    NAME = "transport"
-    GUIDELINES = TRANSPORT_GUIDELINES
-
-
-# ------------------ Complaint Agent ------------------
-COMPLAINT_GUIDELINES = textwrap.dedent("""
-Subject:
-  • Use "Customer Complaint" and file an NCR in the QA system.
-
-BODY:
-  • Include customer name, Sales Order #, batch #s, and nature of failure.
-  • Specify quantities and units.
-  • For transport damage: confirm if remarks exist on CMR/packing slip.
-  • Upload supporting pictures or emails.
-  • Always communicate in English.
-""")
-
-
-class ComplaintAgent(EmailRewriteAgent):
-    NAME = "complaint"
-    GUIDELINES = COMPLAINT_GUIDELINES
+class ChangeRouteAgent(EmailRewriteAgent):
+    NAME = "change route"
+    GUIDELINES = CHANGEROUTE_GUIDELINES
 
 
 # ------------- Agent registry ----------------
 AGENT_REGISTRY: Dict[str, Type[EmailRewriteAgent]] = {
-    SalesSupportAgent.NAME: SalesSupportAgent,
-    TransportAgent.NAME: TransportAgent,
-    ComplaintAgent.NAME: ComplaintAgent,
+    RMASupportAgent.NAME: RMASupportAgent,
+    CancelAgent.NAME: CancelAgent,
+    ChangeRouteAgent.NAME: ChangeRouteAgent,
 }
 
 

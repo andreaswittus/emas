@@ -25,14 +25,14 @@ from .llm_client import LLMClient, LLMError
 # ------------------------- 1. Define the taxonomy -------------------------
 # We list each topic key alongside a short description of when to use it.
 TAXONOMY: Dict[str, str] = {
-    "sales_support": (
-        "Requests involving Sales Support: RMA, wrong quantity, certificates, or general sales assistance."
+    "rma": (
+        "Requests involving RMA, associated with rma, replacement order, ."
     ),
-    "transport": (
-        "Transportation issues: missing or damaged shipments, route inquiries, delays."
+    "cancel": (
+        "Requests involving order or line cancelation, associated with order cancellation, order please cancel, cancel line, cancel item"
     ),
-    "complaint": (
-        "Customer Complaints that require filing a Non‑Conformance Report (NCR)."
+    "change route": (
+        "Requests involving route change, associated with change route, route change"
     ),
     "other": ("Anything else that does not fit the above categories."),
 }
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     # Quick manual test: run `python topic_agent.py` to see the output
     test_email = """
         Hi team,
-        Our customer received the wrong batch of fittings on SO 31202516.
+        Our customer received the wrong batch of fittings on SO 31202516
         """
     print("Input text:\n", test_email)
     print("Detected topic:", extract_topic(test_email))
