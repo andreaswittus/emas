@@ -17,16 +17,17 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 import pandas as pd
-
+from .mistralClient import MistralClient
 from .llm_client import LLMClient
 from .topic_agent import extract_topic
 from .rewriteagents import get_agent
 from .responseagents import get_responseagent
 from data.etl.utils import upsert_df_to_sql_table
 
-EMAIL_TABLE = "email_logging"
+EMAIL_TABLE = "email_testset_logs"
 
 # ----------------------------------------------------------------------
+
 
 def log_email(log_data: Dict[str, Any]) -> None:
     """Insert one consolidated log row per processed email."""
@@ -36,17 +37,18 @@ def log_email(log_data: Dict[str, Any]) -> None:
     }
     upsert_df_to_sql_table(EMAIL_TABLE, pd.DataFrame([record]))
 
+
 def process_email(
     user_input: str,
-    client: LLMClient,
+    client: MistralClient,
     topic_override: str | None = None,
     mode: str = "draft",  # "draft" or "respond"
 ) -> str:
     """
-    Email processing pipeline supporting both drafting and response modes.
-    Logs only one row per email.
+    Email-processing pipeline that generates an initial draft in *both* modes
+    and logs one consolidated row per email.
     """
-    log_data = {
+    log_data: Dict[str, Any] = {
         "mode": mode,
         "raw_input": user_input,
         "detected_topic": None,
@@ -58,34 +60,52 @@ def process_email(
     }
 
     try:
-        # ▶ Detect and choose topic
+        # ▶ Detect and (optionally) override topic
         detected_topic = extract_topic(user_input)
         chosen_topic = topic_override or detected_topic
         log_data["detected_topic"] = detected_topic
         log_data["chosen_topic"] = chosen_topic
 
-        # ▶ Generate initial draft if in draft mode
+        # ──────────────────────────────────────────────────────────────
+        # ▶ Generate an initial draft with the LLM in *both* modes
+        # ──────────────────────────────────────────────────────────────
         if mode == "draft":
             init_prompt = textwrap.dedent(f"""
-                You are an email assistant. Write a polite, professional draft in English
-                based on the user's request below:
+                You are an email assistant. Write a polite, professional **draft email**
+                in English based on the user's request below:
 
                 {user_input}
             """)
-            draft = client.generate(init_prompt)
-            log_data["initial_draft"] = draft
-        else:
-            draft = user_input  # For "respond", use the incoming email
+        else:  # mode == "respond"
+            init_prompt = textwrap.dedent(f"""
+                You are an email assistant. Write a polite, professional **reply**
+                in English to the e-mail below:
 
-        # ▶ Get appropriate agent
-        agent_cls = get_agent(chosen_topic) if mode == "draft" else get_responseagent(chosen_topic)
+                {user_input}
+            """)
+
+        initialoutput = client.generate(init_prompt)  # LLM call
+        log_data["initial_draft"] = initialoutput  # ← always upserted
+
+        # ──────────────────────────────────────────────────────────────
+        # ▶ Choose the correct agent and produce the final version
+        # ──────────────────────────────────────────────────────────────
+        agent_cls = (
+            get_agent(chosen_topic)
+            if mode == "draft"
+            else get_responseagent(chosen_topic)
+        )
         if not agent_cls:
             log_data["agent_found"] = False
-            log_data["final_output"] = draft
-            return draft
+            log_data["final_output"] = initialoutput
+            return initialoutput  # return early if no agent
 
         agent = agent_cls(client)
-        final_output = agent.rewrite(draft) if mode == "draft" else agent.respond(draft)
+        if mode == "draft":
+            final_output = agent.rewrite(initialoutput)  # refining the LLM draft
+        else:  # respond
+            final_output = agent.respond(initialoutput)  # refining the LLM reply
+
         log_data["final_output"] = final_output
         return final_output
 
@@ -94,7 +114,74 @@ def process_email(
         raise
 
     finally:
+        # One consolidated upsert per e-mail
         log_email(log_data)
+
+
+# def process_email(
+#     user_input: str,
+#     client: MistralClient,
+#     topic_override: str | None = None,
+#     mode: str = "draft",  # "draft" or "respond"
+# ) -> str:
+#     """
+#     Email processing pipeline supporting both drafting and response modes.
+#     Logs only one row per email.
+#     """
+#     log_data = {
+#         "mode": mode,
+#         "raw_input": user_input,
+#         "detected_topic": None,
+#         "chosen_topic": None,
+#         "initial_draft": None,
+#         "final_output": None,
+#         "agent_found": True,
+#         "error": None,
+#     }
+
+#     try:
+#         # ▶ Detect and choose topic
+#         detected_topic = extract_topic(user_input)
+#         chosen_topic = topic_override or detected_topic
+#         log_data["detected_topic"] = detected_topic
+#         log_data["chosen_topic"] = chosen_topic
+
+#         # ▶ Generate initial draft if in draft mode
+#         #        if mode == "draft":
+#         init_prompt = textwrap.dedent(f"""
+#             You are an email assistant. Write a polite, professional draft in English
+#             based on the user's request below:
+
+#         {user_input}
+#             """)
+#         draft = client.generate(init_prompt)
+#         log_data["initial_draft"] = draft
+#         #        else:
+#         #            draft = user_input  # For "respond", use the incoming email
+
+#         # ▶ Get appropriate agent
+#         agent_cls = (
+#             get_agent(chosen_topic)
+#             if mode == "draft"
+#             else get_responseagent(chosen_topic)
+#         )
+#         if not agent_cls:
+#             log_data["agent_found"] = False
+#             log_data["final_output"] = draft
+#             return draft
+
+#         agent = agent_cls(client)
+#         final_output = agent.rewrite(draft) if mode == "draft" else agent.respond(draft)
+#         log_data["final_output"] = final_output
+#         return final_output
+
+#     except Exception as e:
+#         log_data["error"] = str(e)
+#         raise
+
+#     finally:
+#         log_email(log_data)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the MAS email pipeline")
@@ -202,8 +289,6 @@ if __name__ == "__main__":
 
 #     separator = "=" * 80
 #     print(f"\n{separator}\n{final_email}\n{separator}\n")
-
-
 
 
 # ----------------------------------------------------------------------

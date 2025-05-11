@@ -37,8 +37,8 @@ class EmailResponseAgent(abc.ABC):
             1. Read the incoming email below.
             2. Compose a professional response that:
             - Acknowledges the request.
+            - Clearly points out and politely requests any missing information.
             - Follows all the guidelines.
-            - Clearly points out and politely requests any missing information (do not just insert placeholders).
             3. Return only the final email response (subject + body), no commentary.
 
             INCOMING EMAIL:
@@ -46,7 +46,8 @@ class EmailResponseAgent(abc.ABC):
         """)
         return self.llm.generate(prompt, temperature=0.3)
 
-#--------------------------- RMA
+
+# --------------------------- RMA
 
 RMA_RESPONS_GUIDELINES = textwrap.dedent("""
     Subject:
@@ -63,12 +64,13 @@ RMA_RESPONS_GUIDELINES = textwrap.dedent("""
       • Always communicate in English.
     """)
 
+
 class RMAResponseAgent(EmailResponseAgent):
     NAME = "rma"
     GUIDELINES = RMA_RESPONS_GUIDELINES
 
 
-#---------------------------- Cancellation
+# ---------------------------- Cancellation
 CANCELLATION_GUIDELINES = textwrap.dedent("""
 Subject:
   • Format: "<SO number> - <Order/Line Cancel> - <Reason>"
@@ -82,12 +84,13 @@ BODY:
   • Always respond concisely and professionally.
 """)
 
+
 class CancelResponseAgent(EmailResponseAgent):
     NAME = "cancel"
     GUIDELINES = CANCELLATION_GUIDELINES
 
 
-#---------------------------- Change Route
+# ---------------------------- Change Route
 CHANGEROUTE_GUIDELINESGUIDELINES = textwrap.dedent("""
     Subject:
       • Format: "<SO number> - Route <##> - <Reason>"
@@ -103,9 +106,11 @@ CHANGEROUTE_GUIDELINESGUIDELINES = textwrap.dedent("""
       • Keep the message professional and concise.
     """)
 
+
 class ChangeRouteResponseAgent(EmailResponseAgent):
     NAME = "change route"
     GUIDELINES = CHANGEROUTE_GUIDELINESGUIDELINES
+
 
 # ------------- Agent registry ----------------
 AGENT_REGISTRY: Dict[str, Type[EmailResponseAgent]] = {
