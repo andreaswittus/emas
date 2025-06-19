@@ -25,9 +25,7 @@ from .llm_client import LLMClient, LLMError
 # ------------------------- 1. Define the taxonomy -------------------------
 # We list each topic key alongside a short description of when to use it.
 TAXONOMY: Dict[str, str] = {
-    "rma": (
-        "Requests involving RMA, associated with rma, replacement order, ."
-    ),
+    "rma": ("Requests involving RMA, associated with rma, replacement order, ."),
     "cancel": (
         "Requests involving order or line cancelation, associated with order cancellation, order please cancel, cancel line, cancel item"
     ),

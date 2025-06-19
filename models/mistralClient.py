@@ -1,16 +1,14 @@
 import requests
 
-endpoint_id = "uixqqgyddx92"
-api_key = "flp_hqZPNatZAZR9VABMmcqB7S3SYZ5YZNW2OHG0cQYy8NUO50"
+endpoint_id = "XX"
+api_key = "XX"
 
 
 class MistralClient:
-    """
-    Drop-in LLMClient replacement for FriendliAI using OpenAI-style completions.
-    """
+    """ """
 
     def __init__(self, endpoint_id: str, api_key: str):
-        self.api_url = "https://api.friendli.ai/dedicated/v1/completions"
+        self.api_url = "XXX"
         self.endpoint_id = endpoint_id
         self.api_key = api_key
 
