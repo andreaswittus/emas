@@ -3,7 +3,7 @@
 llm_client.py — Wrapper around OpenAI ChatCompletion only
 =========================================================
 This simplified client exclusively uses the OpenAI API for all LLM calls.
-It loads configuration from a `.env` file (wherever located) and exposes a
+It loads configuration from a the `.env` file and exposes a
 single `generate` method for downstream modules.
 """
 
