@@ -17,7 +17,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 import pandas as pd
-from .mistralClient import MistralClient
+
+# from .mistralClient import MistralClient --> removed from this script
 from .llm_client import LLMClient
 from .topic_agent import extract_topic
 from .rewriteagents import get_agent
@@ -40,7 +41,7 @@ def log_email(log_data: Dict[str, Any]) -> None:
 
 def process_email(
     user_input: str,
-    client: MistralClient,
+    client: LLMClient,
     topic_override: str | None = None,
     mode: str = "draft",  # "draft" or "respond"
 ) -> str:
